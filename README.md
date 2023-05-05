@@ -80,7 +80,7 @@ conda activate fasttree
 cat fasttree_cmds.sh | parallel -j $NUM_CORES --eta --joblog fasttree_cmds.log '{}'
 
 conda deactivate
-python /home/gdouglas/local/utils/gnu.parallel_cmds_vs_log.py \
+python gnu.parallel_cmds_vs_log.py \
 	--cmds fasttree_cmds.sh \
 	--log fasttree_cmds.log
 ```
@@ -104,8 +104,10 @@ for TREE in  homer_prep/fastas_out_aligned_trees/*tree; do
 	TREE_OUT=$( basename $TREE )
 	echo "Rscript simplify.labels_midpoint.root_and_binarize.tree.R $TREE homer_prep/fastas_out_aligned_trees_prepped/$TREE_OUT FALSE TRUE" >> prep_gene_trees.sh
 done
+
 cat prep_gene_trees.sh | parallel -j $NUM_CORES --eta --joblog prep_gene_trees.log '{}'
-python /home/gdouglas/local/utils/gnu.parallel_cmds_vs_log.py \
+
+python gnu.parallel_cmds_vs_log.py \
 	--cmds prep_gene_trees.sh \
 	--log prep_gene_trees.log
 ```
