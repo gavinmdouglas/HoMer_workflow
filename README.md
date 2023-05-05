@@ -6,7 +6,7 @@ This repository contains the commands and scripts for running HoMer ([website](h
 
 _This workflow was developed based on HoMer v1.0 and RANGER-DTL v2.0._
 
-Before starting the workflow you should keep in mind is that HoMer does not allow *any* non-alphanumeric characters (e.g., underscores) in any input file paths. This is true for both the file names themselves *and for the full file paths* (e.g., no underscores or periods can be present in any folder names that are part of file paths). This is important as it can be inconvenient (and confusing if you're unaware of what is causing problems) if you have to rename files and move them to new folders once you get to that step.
+Before starting the workflow you should keep in mind is that HoMer does not allow *any* non-alphanumeric characters (e.g., underscores) in any input file paths. This is true for both the file names themselves *and for the full file paths* (e.g., no underscores or periods can be present in any folder names that are part of file paths). This is important as it can be inconvenient (and confusing if you're unaware of what is causing problems) if you have to rename files and move them to new folders once you get to that step (below I made symbolic links to where the files were to get around this problem).
 
 
 ## Prep input for HoMer (and RANGER-DTL) workflow
@@ -43,7 +43,7 @@ NUM_CORES=1
 cat muscle_cmds.sh | parallel -j $NUM_CORES --eta --joblog muscle_cmds.log '{}'
 ```
 
-We wrote the commands to run in parallel to a file, rather than running them directly, as I wrote a convenience script (`gnu.parallel_cmds_vs_log.py`) for comparing parallel's joblog output to the original set of commands to run, to ensure that all commands completed correctly.
+We wrote the commands to run in parallel to a file, rather than running them directly, as I wrote a convenience script (`gnu.parallel_cmds_vs_log.py`, [available here](https://github.com/gavinmdouglas/parallel_joblog_summary)) for comparing parallel's joblog output to the original set of commands to run, to ensure that all commands completed correctly.
 
 ```
 python gnu.parallel_cmds_vs_log.py \
@@ -54,5 +54,72 @@ python gnu.parallel_cmds_vs_log.py \
 
 The above command should let you know that all jobs completed correctly. If not, you have some troubleshooting to do!
 
+Note that when I ran muscle on my dataset, I found that some genes were really wonky and didn't align properly (35 gene families in total). I decided to add these to the 'rare' genes sets, so that they would be ignored:
+```
+while read FAILED_CMD; do
+  SPECIES=$( python -c "cmd=\"$FAILED_CMD\"; cmd_split=cmd.split(); print(cmd_split[2].split('/')[1])" )
+  GENE_FAMILY_FASTA=$( python -c "cmd=\"$FAILED_CMD\"; cmd_split=cmd.split(); print(cmd_split[2].split('/')[3])" )
+  GENE_FAMILY=$( basename $GENE_FAMILY_FASTA .fna )
+  FASTA_PATH=$( python -c "cmd=\"$FAILED_CMD\"; cmd_split=cmd.split(); print(cmd_split[2])" )
+  for GENE in $( grep ">" $FASTA_PATH ); do
+	echo "$GENE_FAMILY""$GENE" >> homer_prep/$SPECIES/rare_genes.txt
+  done
+done < muscle_failed_cmds.sh
+```
+
+## Build gene trees (with FastTree in this case)
+```
+mkdir homer_prep/fastas_out_aligned_trees
+
+for FASTA_PATH in homer_prep/$SP/fastas_out_aligned/*fna; do
+	FASTABASE=$( basename $FASTA_PATH .fna );
+	echo "fasttree -nt -gtr -gamma -quiet $FASTA_PATH >  homer_prep/$SP/fastas_out_aligned_trees/$FASTABASE.tree" >> fasttree_cmds.sh
+done
+
+conda activate fasttree
+cat fasttree_cmds.sh | parallel -j $NUM_CORES --eta --joblog fasttree_cmds.log '{}'
+
+conda deactivate
+python /home/gdouglas/local/utils/gnu.parallel_cmds_vs_log.py \
+	--cmds fasttree_cmds.sh \
+	--log fasttree_cmds.log
+```
+
+## Post-process trees:
+
+Then process trees to work with HoMer: non-alphanumeric characters must be removed, and then they must be binary + rooted. This is true for the species tree and for each gene tree.
+
+First, for species trees.
+
+```
+ORIG_TREE="panaroo_out/core_gene_alignment.aln.treefile"
+NEW_TREE="panaroo_out/core_gene_alignment.aln.prepped.treefile"
+Rscript simplify.labels_midpoint.root_and_binarize.tree.R $ORIG_TREE $NEW_TREE TRUE TRUE
+```
+
+Then for gene trees.
+```
+mkdir homer_prep/fastas_out_aligned_trees_prepped
+for TREE in  homer_prep/fastas_out_aligned_trees/*tree; do
+	TREE_OUT=$( basename $TREE )
+	echo "Rscript simplify.labels_midpoint.root_and_binarize.tree.R $TREE homer_prep/fastas_out_aligned_trees_prepped/$TREE_OUT FALSE TRUE" >> prep_gene_trees.sh
+done
+cat prep_gene_trees.sh | parallel -j $NUM_CORES --eta --joblog prep_gene_trees.log '{}'
+python /home/gdouglas/local/utils/gnu.parallel_cmds_vs_log.py \
+	--cmds prep_gene_trees.sh \
+	--log prep_gene_trees.log
+```
 
 
+## Run HoMer Aggregate
+
+Note that this commands needs to be run in the actual folder where the files are kept.
+
+
+mkdir /path/to/output/homer_aggregate_out
+conda activate homer
+cd /path/to/HoMer_Linux/HoMer_Aggregate/
+python ./Homer_Aggregate.py \
+	-g /path/to/homer_prep/fastas_out_aligned_trees_prepped/ \
+	-s/path/to/panaroo_out/core_gene_alignment.aln.prepped.treefile \
+	-f /path/to/output/homer_aggregate_out/
