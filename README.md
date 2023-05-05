@@ -113,13 +113,71 @@ python /home/gdouglas/local/utils/gnu.parallel_cmds_vs_log.py \
 
 ## Run HoMer Aggregate
 
-Note that this commands needs to be run in the actual folder where the files are kept.
+Note that `Homer_Aggregate.py` needs to be run in the source code folder, which is why the command `cd /path/to/HoMer_Linux/HoMer_Aggregate/` is included.
 
-
+```
 mkdir /path/to/output/homer_aggregate_out
+
 conda activate homer
+
 cd /path/to/HoMer_Linux/HoMer_Aggregate/
+
 python ./Homer_Aggregate.py \
 	-g /path/to/homer_prep/fastas_out_aligned_trees_prepped/ \
 	-s/path/to/panaroo_out/core_gene_alignment.aln.prepped.treefile \
-	-f /path/to/output/homer_aggregate_out/
+	-f /path/to/output/homeraggregate/
+```
+
+## Run main HoMer step
+```
+mkdir homer_output
+
+cd /home/gdouglas/local/prg/HoMer_Linux/HoMer
+
+python ./HoMer.py -g /path/to/output/homeraggregate/ReconciliationResults/ \
+                  -s /path/to/output/homeraggregate/LabeledSpeciesTree.newick \
+                  -n /path/to/output/homer_prep/synteny_out \
+                  > /path/to/output/homer_output.txt
+```
+
+## Summarize output 
+
+This step includes combining both multi-gene and other calls into single tables, i.e., so that RANGER-DTL calls that could not be called as multi-gene transfers into table. This does not mean that these are confident single-gene calls: just that we don't have clear evidence that they were in multi-gene transfer events.
+
+```
+conda deactivate
+conda activate ete3
+
+python summarize_HoMer_output.py \
+	 -a /path/to/output/homeraggregate/ReconciliationResults/ \
+         -i /path/to/output/homer_output.txt \
+         -s /path/to/output/homeraggregate/LabeledSpeciesTree.newick \
+         --map_folder /path/to/output/homer_prep/map_out \
+         --output_folder /path/to/output/homer_rangerdtl_summaries/
+```
+
+There will be two output files created.
+
+`nodes_to_leaves` is a simple tab-delimited mapfile of internal node ids in the species tree to all underlying child tips, which are delimited by semi-colons. This could be useful for making sense of transfers in future steps.
+
+`transfers.tsv` is the simplified table of all HGT calls based on HoMer *and* RANGER-DTL. The table structure looks like this:
+
+```
+gene.family     most.freq.donor most.freq.recipient     gene_tree_node  hgt_instance
+COQ2    BGEO_SAMN07136502_METAG_OJHKHPDO        BGEO_SAMN07136504_METAG_IGPBDNOC        m10     single
+COQ2    BGEO_SAMN07136922_METAG_NNHCNKCB        BGEO_SAMN07136923_METAG_MAMHFKFL        m42     single
+COQ2    BGEO_SAMN07136937_METAG_OFMCLPBM        BGEO_SAMN07136936_METAG_FGKIKPOL        m21     single
+COQ2    BGEO_SAMN07136954_METAG_KHJBNKGC        BGEO_SAMN07136960_METAG_KLKLOBJG        m45     single
+COQ2    BGEO_SAMN07136962_METAG_OKKOOCJK        BGEO_SAMN07136921_METAG_KLIFLHHD        m35     single
+COQ2    BGEO_SAMN07136962_METAG_OKKOOCJK        n4      m31     single
+```
+
+The columns correspond to:
+* gene.family - the gene family name
+* most.freq.donor - name of genome (or internal node in species tree) that was marked as the most *frequent donor*
+* most.freq.recipient - name of genome (or internal node in species tree) that was marked as the most frequent *recipient*
+* gene_tree_node - Id of node in gene tree where transfer was inferred
+* hgt_instance - Either `single` or `hmgtN`, where `N` is an integer specifying which horizontal multi-gene transfer event this gene was part of. All HMGT events are numbered sequentially based on their order in the raw HoMer output.
+
+Note that HoMer only calls HMGT events, not single gene transfer events, so here `single` really just means 'not confidentally part of HMGT' rather than 'confidently a single transfer event'.
+
