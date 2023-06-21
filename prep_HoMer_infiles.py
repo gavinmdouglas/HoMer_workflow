@@ -2,12 +2,22 @@
 
 import sys
 import argparse
-from functions.io_utils import write_fasta
 from collections import defaultdict
 import gzip
 import re
 import os
 
+
+def write_fasta(seq, outfile):
+    out_fasta = open(outfile, "w")
+
+    # Look through sequence ids (sorted alphabetically so output file is
+    # reproducible).
+    for s in sorted(seq.keys()):
+        out_fasta.write(">" + s + "\n")
+        out_fasta.write(textwrap.fill(seq[s], width=70) + "\n")
+
+    out_fasta.close()
 
 def orig_to_nonalphanumeric_map(input_ids):
     '''Given a list of ids, return a dictionary mapping these ids to the new ids after removing all
