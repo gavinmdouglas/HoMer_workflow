@@ -6,6 +6,7 @@ from collections import defaultdict
 import gzip
 import re
 import os
+import textwrap
 
 
 def write_fasta(seq, outfile):
