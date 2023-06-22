@@ -20,6 +20,7 @@ def write_fasta(seq, outfile):
 
     out_fasta.close()
 
+
 def orig_to_nonalphanumeric_map(input_ids):
     '''Given a list of ids, return a dictionary mapping these ids to the new ids after removing all
     non-alphanumeric values, while ensuring they are still unique ids.'''
