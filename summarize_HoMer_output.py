@@ -85,14 +85,20 @@ def main():
                 # event.
                 if re.match(r'^m\d+ = ', line) and 'Transfers = 100' in line:
                     # Parse out key parts of line:
-                    pattern = r'(m\d+) = LCA\[\w+_\w+, \w+_\w+\]: \[Speciations = \d+, Duplications = \d+, Transfers = \d+\], \[Most Frequent mapping --\> (\w+), \d+ times\], \[Most Frequent recipient --\> (\w+), \d+ times\]\.'
+                    pattern = r'(m\d+) = LCA\[\w+_\w+, \w+_\w+\]: \[Speciations = \d+, Duplications = \d+, Transfers = \d+\], \[Most Frequent mapping --\> (\w+), (\d+) times\], \[Most Frequent recipient --\> (\w+), (\d+) times\]\.'
 
                     match = re.search(pattern, line)
                     gene_tree_node = match.group(1)
                     most_frequent_mapping = genome_id_map[match.group(2)]
-                    most_frequent_recipient = genome_id_map[match.group(3)]
+                    most_frequent_mapping_count = match.group(3)
+                    most_frequent_recipient = genome_id_map[match.group(4)]
+                    most_frequent_recipient_count = match.group(5)
 
-                    single_transfer_id = ';'.join([gene_family, most_frequent_mapping, most_frequent_recipient])
+                    single_transfer_id = ';'.join([gene_family,
+                                                   most_frequent_mapping,
+                                                   most_frequent_mapping_count,
+                                                   most_frequent_recipient,
+                                                   most_frequent_recipient_count])
 
                     gene_family_transfer_nodes[single_transfer_id] = gene_tree_node
 
@@ -126,7 +132,9 @@ def main():
 
     # Finally, loop through individual transfer events and create output table.
     with open(args.output_folder + '/transfers.tsv', 'w') as transfer_out_fh:
-        print('\t'.join(['gene.family', 'most.freq.donor', 'most.freq.recipient',
+        print('\t'.join(['gene.family',
+                         'most.freq.donor', 'most.freq.donor.instances',
+                         'most.freq.recipient', 'most.freq.recipient.instances',
                          'gene_tree_node', 'hgt_instance']),
               file=transfer_out_fh)
         for transfer_identifier in sorted(gene_family_transfer_nodes.keys()):
