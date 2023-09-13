@@ -59,9 +59,9 @@ def main():
             if len(children) == 0:
                 continue
             for leaf in children[0]:
-                node_leaves.append(leaf.name)
+                node_leaves.append(genome_id_map[leaf.name])
             for leaf in children[1]:
-                node_leaves.append(leaf.name)
+                node_leaves.append(genome_id_map[leaf.name])
             print(node.name + '\t' + ';'.join(sorted(node_leaves)),
                   file=node_to_leaf_fh)
 
