@@ -144,7 +144,7 @@ python ./HoMer.py -g /path/to/output/homeraggregate/ReconciliationResults/ \
 
 ## Summarize output 
 
-This step includes combining both multi-gene and other calls into single tables, i.e., so that RANGER-DTL calls that could not be called as multi-gene transfers into table. This does not mean that these are confident single-gene calls: just that we don't have clear evidence that they were in multi-gene transfer events.
+This step includes combining both multi-gene and other calls into single tables, i.e., so that RANGER-DTL calls that could not be called as multi-gene transfers into table. This does not mean that these are confident single-gene calls: just that we don't have clear evidence that they were in multi-gene transfer events. **Note**: This script assumes you ran 100 `Homer_Aggregate.py` replicates specifically per gene family (the default).
 
 ```
 conda deactivate
@@ -160,26 +160,64 @@ python summarize_HoMer_output.py \
 
 There will be two output files created.
 
-`nodes_to_leaves` is a simple tab-delimited mapfile of internal node ids in the species tree to all underlying child tips, which are delimited by semi-colons. This could be useful for making sense of transfers in future steps.
+`nodes_to_leaves` is a simple tab-delimited mapfile of internal node ids in the species tree to all underlying child tips, which are delimited by semi-colons. This could be useful for making sense of transfers in future steps. Note that the tip names correspond to the original genome IDs, i.e., all non-alphanumeric characters removed for running this pipeline will be re-added.
 
 `transfers.tsv` is the simplified table of all HGT calls based on HoMer *and* RANGER-DTL. The table structure looks like this:
 
 ```
-gene.family     most.freq.donor most.freq.recipient     gene_tree_node  hgt_instance
-COQ2    BGEO_SAMN07136502_METAG_OJHKHPDO        BGEO_SAMN07136504_METAG_IGPBDNOC        m10     single
-COQ2    BGEO_SAMN07136922_METAG_NNHCNKCB        BGEO_SAMN07136923_METAG_MAMHFKFL        m42     single
-COQ2    BGEO_SAMN07136937_METAG_OFMCLPBM        BGEO_SAMN07136936_METAG_FGKIKPOL        m21     single
-COQ2    BGEO_SAMN07136954_METAG_KHJBNKGC        BGEO_SAMN07136960_METAG_KLKLOBJG        m45     single
-COQ2    BGEO_SAMN07136962_METAG_OKKOOCJK        BGEO_SAMN07136921_METAG_KLIFLHHD        m35     single
-COQ2    BGEO_SAMN07136962_METAG_OKKOOCJK        n4      m31     single
+gene.family     most.freq.donor most.freq.donor.instances       most.freq.recipient     most.freq.recipient.instances   gene_tree_node
+  hgt_instance
+AAH1    MALA_SAMN05421699_METAG_ABPHNPKL        100     MALA_SAMN05422108_METAG_FKLFPLKL        100     m129    single
+AAH1    MALA_SAMN05421699_METAG_ABPHNPKL        100     TARA_SAMEA2619747_METAG_JBDDHCJO        100     m125    single
+ARG7~~~argJ     TARA_SAMEA2620783_METAG_DJEACFGL        100     n54     48      m37     single
+COQ2~~~ubiA     TARA_SAMEA2620256_METAG_MECLBIAM        34      TARA_SAMEA2621285_METAG_PDIJJACG        56      m57     single
 ```
 
 The columns correspond to:
 * gene.family - the gene family name
 * most.freq.donor - name of genome (or internal node in species tree) that was marked as the most *frequent donor*
-* most.freq.recipient - name of genome (or internal node in species tree) that was marked as the most frequent *recipient*
+* most.freq.donor.instances - number of `Homer_Aggregate.py` replicates where this genome was the *donor*.
+* most.freq.recipient - name of genome (or internal node in species tree) that was marked as the most *frequent recipient*
+* most.freq.recipient.instances - number of `Homer_Aggregate.py` replicates where this genome was the *recipient*.
 * gene_tree_node - Id of node in gene tree where transfer was inferred
 * hgt_instance - Either `single` or `hmgtN`, where `N` is an integer specifying which horizontal multi-gene transfer event this gene was part of. All HMGT events are numbered sequentially based on their order in the raw HoMer output.
 
 Note that HoMer only calls HMGT events, not single gene transfer events, so here `single` really just means 'not confidentally part of HMGT' rather than 'confidently a single transfer event'.
 
+## Next steps
+
+I suggest you filter `transfers.tsv` to only retain well-supported transfer pairs. I favoured limiting the output to transfer events supported by all 100 replicates, which you can do by only retaining rows of this table where `most.freq.donor.instances` and `most.freq.recipient.instances` equal 100.
+
+Sometimes you might also want to get a simplified breakdown of transfer partners that includes all possible genome pairs, rather than transfers between genomes and internal tree nodes (e.g., `n54` in the above example table for gene family `ARG7~~~argJ`). This can be helpful if comparing to other HGT inference approaches, such as similarity hits between genomes, but note that this simplified breakdown will not provide insight into the numbers of independent HGT events (unlike `transfers.tsv`), and instead represents cases where alleles of two genomes share similarity due to HGT at some point between separate lineages.
+
+You can get this breakdown with this command (`transfers_filt.tsv` referring to the filtered table after subsetting only to rows with 100% of replicates agreeing on donor and recipient, as described above):
+
+```
+python simplified_HGT_partners.py -t transfers_filt.tsv \
+                                  -n nodes_to_leaves.tsv \
+                                  > simplified_pairwise_transfers.tsv
+```
+
+The output looks like this:
+
+```
+gene_family     effective_donor effective_recipient     pair_type       called_donor    called_donor_tally      called_recipient
+        called_recipient_tally  gene_tree_node  hgt_instance
+COQ3_2  TARA_SAMEA2622690_METAG_KEIPAIEC        TARA_SAMEA2622678_METAG_EDMLIGDO        direct  TARA_SAMEA2622690_METAG_KEIPAIEC
+        100     TARA_SAMEA2622678_METAG_EDMLIGDO        100     m12     single
+COQ3_2  TARA_SAMN05326645_METAG_PSE00098        TARA_SAMEA2622673_METAG_DIPODJBH        direct  TARA_SAMN05326645_METAG_PSE00098
+        100     TARA_SAMEA2622673_METAG_DIPODJBH        100     m7      single
+COQ3_2  TARA_SAMN05326645_METAG_PSE00098        TARA_SAMEA2622736_METAG_PADLMHCI        indirect        n20     100     TARA_SAMEA26227
+36_METAG_PADLMHCI        100     m2      single
+COQ3_2  TARA_SAMEA2619779_METAG_MPHGPNAE        TARA_SAMEA2622736_METAG_PADLMHCI        indirect        n20     100     TARA_SAMEA26227
+36_METAG_PADLMHCI        100     m2      single
+COQ3_2  TARA_SAMEA2622197_METAG_ODGMLBOK        TARA_SAMEA2622736_METAG_PADLMHCI        indirect        n20     100     TARA_SAMEA26227
+36_METAG_PADLMHCI        100     m2      single
+```
+
+The columns are similar to `transfers.tsv`, but the original donor and recipient columns are prefixed with "called" to distinguish the "effective" donors and recipients from the original calls. The term "effective" is used to indicate that some of these pairs are not direct transfer pairs, but are simply the descendants of a lineage involved in an ancestral transfer event, and which did not subsequently receive a different allele (checking for this latter possibility is the key reason why this script does not just output all tips underlying a node involved in a transfer: sometimes those underlying tips are recipients of subsequent transfers).
+
+The new columns are:
+* effective_donor/effective_recipient: Genome ID of effective donor/recipient (which can just be the same as the original, if it was already at the genome level, or will be a descendant of a node where a transfer happened).
+* pair_type: Either "direct" or "indirect", to distinguish cases where the transfer event was inferred to be directly between two genomes (direct), or whether at least one of the donor or recipient was an internal node (indirect).
+  
