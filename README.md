@@ -11,7 +11,7 @@ Before starting the workflow you should keep in mind is that HoMer does not allo
 
 ## Prep input for HoMer (and RANGER-DTL) workflow
 
-The `prep_HoMer_infiles.py` script will parse [panaroo](https://github.com/gtonkinhill/panaroo) output FASTA files for each non-singleton gene. A file containing all singleton genes to be ignored will also be created. Note that 'refound' genes are not considered as present. Also, note that the gene ordering in the scaffold is assumed to be in the actual gene names themselves. Last, all non-alphanumeric characters will be removed from genome, scaffold/contig, and gene names
+The `prep_HoMer_infiles.py` script will parse [panaroo](https://github.com/gtonkinhill/panaroo) output FASTA files for each non-singleton gene. A file containing all singleton genes to be ignored will also be created. Note that 'refound' genes are not considered as present. Also, note that the gene ordering in each scaffold is taken from the `clustering_id` in the `gene_data.csv.gz` file. Last, all non-alphanumeric characters will be removed from genome, scaffold/contig, and gene names
 
 ```
 mkdir homer_prep
