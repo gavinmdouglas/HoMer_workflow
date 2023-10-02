@@ -3,21 +3,25 @@
 import argparse
 from collections import defaultdict
 import sys
+import gzip
 
-import pprint
 
 def main():
 
     parser = argparse.ArgumentParser(
 
-        description="Although focusing on the actual internal nodes where transfer are "
-                    "predicted to have occurred is valuable, sometimes information on the "
-                    "tips of the trees sharing similar genes due to HGT is needed "
-                    "(e.g., to compare with tools that only call HGT between extant genomes). "
-                    "This script parses the transfer and node label tables produced by "
-                    "summarize_HoMer_output.py and outputs 'effective' transfer partners, "
-                    "which includes combinations of genomes descended from donor/recipient nodes."
-                    "This output will also include direct donor and recipient pairs (which will be distinguished).",
+        description='''
+        Although focusing on the actual internal nodes where transfer are
+        predicted to have occurred is valuable, sometimes information on the
+        tips of the trees sharing similar genes due to HGT is needed
+        (e.g., to compare with tools that only call HGT between extant genomes).
+        This script parses the transfer and node label tables produced by
+        summarize_HoMer_output.py and outputs 'effective' transfer partners,
+        which includes combinations of genomes descended from donor/recipient nodes.
+        Also parses the Panaroo presence/absence table to identify cases where genomes are now missing
+        to make sure those cases are not included.
+        This output will also include direct donor and recipient pairs (which will be distinguished).
+        ''',
 
         formatter_class=argparse.RawDescriptionHelpFormatter)
 
@@ -28,13 +32,17 @@ def main():
                         required=True,
                         help="Path to table containing mapping of all internal node ids to descendant tips.")
 
+    parser.add_argument('-p', '--panaroo', metavar="gene_presence_absence.csv.gz", type=str,
+                        required=True,
+                        help="Path to table containing gene family presence/absence pattern across genomes.")
+
     args = parser.parse_args()
 
     # Read in node mapfile and create dictionary mapping internal node ids to
     # all tips descending from that node.
     node_descendants = dict()
     with open(args.nodes_map, 'r') as node_map_fh:
-       for node_map_line in node_map_fh:
+        for node_map_line in node_map_fh:
             node_map_line_split = node_map_line.split()
             if len(node_map_line_split) != 2:
                 sys.exit('Stopping - node to leaves mapfile should only have two columns.')
@@ -50,16 +58,29 @@ def main():
         for genome_map_line in genome_map_fh:
             genome_map_line_split = genome_map_line.split()
             transfers_by_genes[genome_map_line_split[0]].append(genome_map_line_split[1:])
-        
+
+    # Read through Panaroo presence/absence table and get mapping of gene families to encoding genomes.
+    genefamily_to_genomes = defaultdict(set)
+    with gzip.open(args.panaroo, 'rt') as panaroo_filehandle:
+        panaroo_header = panaroo_filehandle.readline()
+        panaroo_genomes = panaroo_header.rstrip().split(',')[3:]
+
+        for panaroo_line in panaroo_filehandle:
+            panaroo_line_split = panaroo_line.rstrip().split(',')
+            gene_family = panaroo_line_split[0]
+            genes = panaroo_line_split[3:]
+            for i, gene in enumerate(genes):
+                if gene != '':
+                    genefamily_to_genomes[gene_family].add(panaroo_genomes[i])
 
     # Then loop through each gene family, and figure out:
-    
+
     # 1) If there are any duplicate donor/recipient pairs (which will be ignored),
     # or if there are instances where the donor and recipient are the same genome
     # (which will also be ignored). In both cases, these likely represent issues, either
     # with the upstream steps or that filtering is needed, which will be written out to
     # standard error.
- 
+
     # 2) How many times each recipient is listed (clearly less confidence if a tip or node
     # is listed as a recipient from different donors). Will treat these as 'effective' transfers if so.
 
@@ -78,7 +99,7 @@ def main():
         all_transfer_pairs = set()
         recipient_observed = set()
         duplicated_recipients = set()
-        
+
         # Also, keep track of all internal nodes marked as recipients, and keep track of the descendant tips.
         node_recipient_descendants = dict()
         lowest_recipient_node = dict()
@@ -108,12 +129,12 @@ def main():
             if transfer_pair in all_transfer_pairs:
                 sys.stderr.write("WARNING: Duplicate donor/recipient pair found for gene family " + gene_family + ": " + transfer_pair + "\n")
                 continue
-            
+
             # Otherwise add to new list.
             filt_transfer_info.append(transfer_info)
-        
-        if len(duplicated_recipients) > 0:
-            sys.stderr.write("WARNING: The same recipient was labelled for multiple transfer events for " + gene_family + ", " + str(len(duplicated_recipients)) + " separate recipient(s)\n")
+
+        #if len(duplicated_recipients) > 0:
+            #sys.stderr.write("WARNING: The same recipient was labelled for multiple transfer events for " + gene_family + ", " + str(len(duplicated_recipients)) + " separate recipient(s)\n")
 
         # Then, for all recipient nodes, figure out lowest recipient node/tip (which is trivial for the genome recipients)
         # by looping through the nodes from smallest to largest.
@@ -125,14 +146,14 @@ def main():
 
                 if descendant not in lowest_recipient_node.keys():
                     lowest_recipient_node[descendant] = recipient_node
-                
+
         # Then, loop through all transfer pairs, and write out all 'effective' transfers.
         for transfer_info in filt_transfer_info:
             donor = transfer_info[0]
             donor_tally = transfer_info[1]
             recipient = transfer_info[2]
             recipient_tally = transfer_info[3]
-            gene_tree_node  = transfer_info[4]
+            gene_tree_node = transfer_info[4]
             hgt_instance = transfer_info[5]
 
             if recipient in node_descendants.keys():
@@ -167,8 +188,9 @@ def main():
                         # Include as a donor if the HGT event for this donor occurred in an earlier (larger) node.
                         if effective_donor_recipient_node_size > num_raw_effective_donors:
                             tmp_effective_donors.append(effective_donor)
-                        elif effective_donor_recipient_node_size == num_raw_effective_donors:
-                            print('WARNING: Same node for genome ancestral node that was donor and lowest common recipient node for recipient ' + recipient + ' and donor ' + effective_donor + ' for gene family ' + gene_family + '.')
+                        #elif effective_donor_recipient_node_size == num_raw_effective_donors:
+                            #print('WARNING: Same node for genome ancestral node that was donor and lowest common recipient node for recipient ' + recipient + ' and donor ' + effective_donor + ' for gene family ' + gene_family + '.',
+                                  #file=sys.stderr)
                     else:
                         tmp_effective_donors.append(effective_donor)
                 effective_donors = tmp_effective_donors
@@ -180,8 +202,13 @@ def main():
                 pair_type = 'indirect'
 
             for effective_donor in effective_donors:
+                if effective_donor not in genefamily_to_genomes[gene_family]:
+                    continue
                 for effective_recipient in effective_recipients:
-                    print(gene_family + '\t' + effective_donor + '\t' + effective_recipient + '\t' + pair_type + '\t' + donor + '\t' + donor_tally + '\t' + recipient + '\t' + recipient_tally + '\t' + gene_tree_node + '\t' + hgt_instance)
+                    if effective_recipient not in genefamily_to_genomes[gene_family]:
+                        continue
+                    else:
+                        print(gene_family + '\t' + effective_donor + '\t' + effective_recipient + '\t' + pair_type + '\t' + donor + '\t' + donor_tally + '\t' + recipient + '\t' + recipient_tally + '\t' + gene_tree_node + '\t' + hgt_instance)
 
 
 if __name__ == '__main__':
