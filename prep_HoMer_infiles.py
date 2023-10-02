@@ -35,7 +35,7 @@ def orig_to_nonalphanumeric_map(input_ids):
             dup_num += 1
         orig_to_clean[orig_id] = clean_id_final
 
-    return(orig_to_clean)
+    return orig_to_clean
 
 
 # Get FASTA files of raw sequences for all core genes in panaroo output.
@@ -44,7 +44,7 @@ def main():
     parser = argparse.ArgumentParser(
 
         description="Reads in panaroo gene_data.csv and gene_presence_absence.csv files and output raw FASTA per non-singleton gene. "
-                    "Note that \'refound\' genes are not considered as present. Also, note that the gene ordering in the scaffold is assumed to be in the actual gene names themselves. "
+                    "Note that \'refound\' genes are not considered as present. Gene order on scaffolds is taken from the gene_data.csv file. "
                     "Last, all non-alphanumeric characters will be removed from genome, scaffold/contig, and gene names.",
 
         formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -80,12 +80,12 @@ def main():
         os.makedirs(args.mapfiles)
 
     gene_seqs = dict()
-    scaffold_to_genes = defaultdict(set)
     genome_to_scaffolds = defaultdict(set)
     genes_to_genome = dict()
     col_map = dict()
     header_flag = True
     unique_genomes = set()
+    scaffolds_to_gene_number = defaultdict(dict)
 
     with gzip.open(args.data, 'rt') as data_fh:
         for data_line in data_fh:
@@ -101,15 +101,18 @@ def main():
             annot_i = col_map['annotation_id']
             dna_i = col_map['dna_sequence']
             scaffold_i = col_map['scaffold_name']
+            clustering_id_i = col_map['clustering_id']
 
             if '_refound' in data_split[annot_i]:
                 continue
 
             gene_seqs[data_split[annot_i]] = data_split[dna_i]
-            scaffold_to_genes[data_split[scaffold_i]].add(data_split[annot_i])
             genes_to_genome[data_split[annot_i]] = data_split[genome_i]
             genome_to_scaffolds[data_split[genome_i]].add(data_split[scaffold_i])
             unique_genomes.add(data_split[genome_i])
+            clustering_id_info = data_split[clustering_id_i].split('_')
+            scaffold_gene_number = int(clustering_id_info[-1]) + 1
+            scaffolds_to_gene_number[data_split[scaffold_i]][scaffold_gene_number] = data_split[annot_i]
 
     # Read through panaroo file once to get all unique gene family ids, so that
     # they can be mapped to non-alphanumeric versions, just in case.
@@ -129,8 +132,7 @@ def main():
     orig_to_clean_genes = orig_to_nonalphanumeric_map(sorted(list(genes_to_genome.keys())))
 
     # Scaffolds/contigs are actually an exceptional case, as these must be formatted as '_contig__#'
-    # in the synteny file (this is taken care of when writing out the syntent files below).
-
+    # in the synteny file (this is taken care of when writing out the synteny files below).
     rare_fh = open(args.rare, 'w')
 
     genes_to_gene_families = dict()
@@ -173,8 +175,7 @@ def main():
 
     orig_to_clean_scaffolds = dict()
 
-    # Then print out synteny data.
-    # Importantly, this assumes that the contig info and gene order is actually in the gene name.
+    # Then print out synteny data (which is taken from the gene_data.csv file).
     for genome_orig in sorted(orig_to_clean_genomes.keys()):
         genome_clean = orig_to_clean_genomes[genome_orig]
 
@@ -189,17 +190,16 @@ def main():
 
                 orig_to_clean_scaffolds[genome_clean][orig_scaffold_id] = new_scaffold_id
 
-                num_scaffold_genes = len(scaffold_to_genes[orig_scaffold_id])
-
                 scaffold_out_line = []
 
-                for i in range(1, num_scaffold_genes + 1, 1):
-                    orig_gene_id = orig_scaffold_id + '-gene_' + str(i)
+                for i in range(1, max(scaffolds_to_gene_number[orig_scaffold_id].keys()) + 1, 1):
 
-                    if orig_gene_id not in orig_to_clean_genes.keys():
-                        print('This gene id not found: ' + orig_gene_id,
+                    if i not in scaffolds_to_gene_number[orig_scaffold_id].keys():
+                        print('This gene number not found: ' + str(i) + ' for scaffold ' + orig_scaffold_id,
                               file = sys.stderr)
                         continue
+
+                    orig_gene_id = scaffolds_to_gene_number[orig_scaffold_id][i]
 
                     clean_gene_id = orig_to_clean_genes[orig_gene_id]
 
