@@ -190,11 +190,12 @@ I suggest you filter `transfers.tsv` to only retain well-supported transfer pair
 
 Sometimes you might also want to get a simplified breakdown of transfer partners that includes all possible genome pairs, rather than transfers between genomes and internal tree nodes (e.g., `n54` in the above example table for gene family `ARG7~~~argJ`). This can be helpful if comparing to other HGT inference approaches, such as similarity hits between genomes, but note that this simplified breakdown will not provide insight into the numbers of independent HGT events (unlike `transfers.tsv`), and instead represents cases where alleles of two genomes share similarity due to HGT at some point between separate lineages.
 
-You can get this breakdown with this command (`transfers_filt.tsv` referring to the filtered table after subsetting only to rows with 100% of replicates agreeing on donor and recipient, as described above):
+You can get this breakdown with the below command (`transfers_filt.tsv` referring to the filtered table after subsetting only to rows with 100% of replicates agreeing on donor and recipient, as described above). Note that this command also requires a gzipped Panaroo-output presence/absence table, which is used to identify cases where genes are missing in genomes (as the gene loss information was not retained in earlier steps).
 
 ```
 python simplified_HGT_partners.py -t transfers_filt.tsv \
                                   -n nodes_to_leaves.tsv \
+                                  -p panaroo_output/gene_presence_absence.csv.gz \
                                   > simplified_pairwise_transfers.tsv
 ```
 
