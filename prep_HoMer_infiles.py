@@ -4,39 +4,8 @@ import sys
 import argparse
 from collections import defaultdict
 import gzip
-import re
 import os
-import textwrap
-
-
-def write_fasta(seq, outfile):
-    out_fasta = open(outfile, "w")
-
-    # Look through sequence ids (sorted alphabetically so output file is
-    # reproducible).
-    for s in sorted(seq.keys()):
-        out_fasta.write(">" + s + "\n")
-        out_fasta.write(textwrap.fill(seq[s], width=70) + "\n")
-
-    out_fasta.close()
-
-
-def orig_to_nonalphanumeric_map(input_ids):
-    '''Given a list of ids, return a dictionary mapping these ids to the new ids after removing all
-    non-alphanumeric values, while ensuring they are still unique ids.'''
-    orig_to_clean = dict()
-    for orig_id in input_ids:
-        clean_id = re.sub(r'\W+', '', orig_id)
-        clean_id = re.sub(r'_+', '', clean_id)
-        clean_id_final = clean_id
-        dup_num = 1
-        while clean_id_final in orig_to_clean.keys():
-            clean_id_final = clean_id + str(dup_num)
-            dup_num += 1
-        orig_to_clean[orig_id] = clean_id_final
-
-    return orig_to_clean
-
+from functions import write_fasta, orig_to_nonalphanumeric_map
 
 # Get FASTA files of raw sequences for all core genes in panaroo output.
 def main():
@@ -54,6 +23,10 @@ def main():
 
     parser.add_argument("-p", "--presence", metavar="gene_presence_absence.csv.gz", type=str,
                         required=True, help="Path to gene_presence_absence.csv.gz")
+
+    parser.add_argument("-c", "--chrom_to_consider", metavar="PATH", type=str,
+                        required=False, default = None,
+                        help="Path to file with list of chromosomes to consider (one per line). All other chromosomes/scaffolds will be ignored. All chromosomes will be considered if this is not set.")
 
     parser.add_argument("-f", "--fasta", metavar="OUTPUT", type=str,
                         required=True, help="Path to folder to output FASTAs")
@@ -87,6 +60,13 @@ def main():
     unique_genomes = set()
     scaffolds_to_gene_number = defaultdict(dict)
 
+    genes_to_ignore = set()
+    chrom_to_consider = set()
+    if args.chrom_to_consider is not None:
+        with open(args.chrom_to_consider, 'r') as chrom_fh:
+            for chrom_line in chrom_fh:
+                chrom_to_consider.add(chrom_line.rstrip())
+
     with gzip.open(args.data, 'rt') as data_fh:
         for data_line in data_fh:
             data_split = data_line.split(',')
@@ -105,6 +85,13 @@ def main():
 
             if '_refound' in data_split[annot_i]:
                 continue
+
+            # Skip if this gene is on a chromosome not in the list of chromosomes to consider.
+            # And add this gene to the list of genes to ignore.
+            if args.chrom_to_consider is not None:
+                if data_split[scaffold_i] not in chrom_to_consider:
+                    genes_to_ignore.add(data_split[annot_i])
+                    continue
 
             gene_seqs[data_split[annot_i]] = data_split[dna_i]
             genes_to_genome[data_split[annot_i]] = data_split[genome_i]
@@ -151,8 +138,12 @@ def main():
                     if g != '' and '_refound' not in g:
                         if g.endswith('_len'):
                             g = g[:-4]
-                        genome_hit = genes_to_genome[g]
-                        gene_family[genome_hit].add(g)
+                        if g not in genes_to_ignore:
+                            genome_hit = genes_to_genome[g]
+                            gene_family[genome_hit].add(g)
+
+            if len(gene_family.keys()) == 0:
+                continue
 
             gene_family_seqs = dict()
             if len(gene_family.keys()) > 1:
@@ -167,9 +158,6 @@ def main():
             elif len(gene_family.keys()) == 1:
                 print(orig_to_clean_gene_families[name] + '>' + orig_to_clean_genes[list(list(gene_family.values())[0])[0]],
                       file = rare_fh)
-
-            else:
-                sys.exit('Gene family not found in any genomes?... Not possible')
 
     rare_fh.close()
 
@@ -204,8 +192,8 @@ def main():
                     clean_gene_id = orig_to_clean_genes[orig_gene_id]
 
                     if clean_gene_id not in genes_to_gene_families.keys():
-                        print('No gene family found for this gene: ' + clean_gene_id,
-                              file = sys.stderr)
+                        #print('No gene family found for this gene: ' + clean_gene_id,
+                        #      file = sys.stderr)
                         continue
 
                     clean_gene_family_id = genes_to_gene_families[clean_gene_id]
