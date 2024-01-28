@@ -67,6 +67,36 @@ while read FAILED_CMD; do
 done < muscle_failed_cmds.sh
 ```
 
+## Trim alignments and remove genes with short trimmed alignments
+
+Trim alignments with [TrimAl](http://trimal.cgenomics.org/). I decided to just remove any columns containing *any* gap characters.
+
+The being that stretches of gaps could throw off the RANGER-DTL inferences (and are more likely to represent mis-alignments).
+
+```
+mkdir homer_prep/$SP/fastas_out_aligned_nogaps
+
+for INFASTA in homer_prep/$SP/fastas_out_aligned/*.fna; do
+	BASEFASTA=$( basename $INFASTA .fna )
+	OUTFASTA="homer_prep/$SP/fastas_out_aligned_nogaps/$BASEFASTA.fna"
+	echo "trimal -in $INFASTA -gt 1 -out $OUTFASTA" >> gene_trimal_cmds.sh
+done
+
+cat gene_trimal_cmds.sh | parallel -j 50 --eta --joblog gene_trimal_cmds.log '{}'
+
+python /home/gdouglas/local/parallel_joblog_summary/gnu.parallel_cmds_vs_log.py \
+	--cmds gene_trimal_cmds.sh \
+	--log gene_trimal_cmds.log
+```
+
+Then remove any gene family alignments < 200 bp after the above step, and add the individual genes to rare_genes.txt.
+Note that this command will likely remove some of the FASTA files created above - take a look at the help documentation.
+```
+python rm_short_trimmed_aln.py \
+	-f homer_prep/$SP/fastas_out_aligned_nogaps/ \
+	-r homer_prep/$SP/rare_genes.txt
+```
+
 ## Build gene trees (with FastTree in this case)
 ```
 mkdir homer_prep/fastas_out_aligned_trees
